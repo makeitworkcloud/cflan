@@ -1,0 +1,14 @@
+# Development dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=5.0.0
+
+# Type checking
+mypy>=1.10.0
+types-PyYAML
+types-requests
+
+# Linting and formatting (via pre-commit)
+pre-commit>=4.0.0

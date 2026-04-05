@@ -10,12 +10,12 @@
 # cf_domain_name - Name of the DNS Zone in Cloudflare, i.e. mydomain.com
 
 import socket
+import subprocess
 import sys
-from typing import Any, Dict
+from typing import Any
 
 import CloudFlare
 import netifaces
-import subprocess
 import yaml
 
 
@@ -66,12 +66,12 @@ def validate_network_manager_args(local_ip_addr: str) -> None:
         print("NetworkManager argument(s) were not set. Proceeding...")
 
 
-def get_yaml_vars() -> Dict[str, Any]:
+def get_yaml_vars() -> dict[str, Any]:
     """Get YAML variables from vars.yaml or sops_vars.yaml."""
     print("Getting unencrypted values from vars.yaml ...")
     try:
-        with open("vars.yaml", "r") as f:
-            result: Dict[str, Any] = yaml.safe_load(f.read())
+        with open("vars.yaml") as f:
+            result: dict[str, Any] = yaml.safe_load(f.read())
             return result
     except Exception:
         print("Failed to get unencrypted values from vars.yaml ...")
@@ -79,8 +79,7 @@ def get_yaml_vars() -> Dict[str, Any]:
         try:
             r = subprocess.run(
                 ["sops", "decrypt", "sops_vars.yaml"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
             )
             if r.returncode != 0:
                 print(r.stderr.decode("utf-8"))
@@ -90,7 +89,7 @@ def get_yaml_vars() -> Dict[str, Any]:
             sys.exit("sops must be installed and configured to use this script.")
 
         print("Getting YAML variables from sops output...")
-        sops_result: Dict[str, Any] = yaml.safe_load(r.stdout.decode("utf-8"))
+        sops_result: dict[str, Any] = yaml.safe_load(r.stdout.decode("utf-8"))
         return sops_result
 
 
@@ -141,7 +140,7 @@ def create_dns_record(
             data={"name": hostname, "type": "A", "content": ip_addr},
         )
     except CloudFlare.exceptions.CloudFlareAPIError as e:
-        sys.exit("/zones.dns_records.post %s - %d %s" % (e, e, e))
+        sys.exit(f"/zones.dns_records.post {e} - {e} {e}")
     print("Success!")
 
 
@@ -174,7 +173,7 @@ def update_dns_record(
             data={"name": hostname, "type": "A", "content": ip_addr},
         )
     except CloudFlare.exceptions.CloudFlareAPIError as e:
-        sys.exit("/zones.dns_records.post %s - %d %s" % (e, e, e))
+        sys.exit(f"/zones.dns_records.post {e} - {e} {e}")
 
     print("Success!")
 
