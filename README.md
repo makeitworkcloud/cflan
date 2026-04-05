@@ -34,15 +34,9 @@ CFLAN automatically updates Cloudflare DNS records with your local machine's IP 
 git clone https://github.com/welchworks/cflan.git
 cd cflan
 
-# Create a virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run setup (requires root)
-sudo python setup.py
+# Create configuration file (see Configuration section below)
+# Then install (requires root)
+sudo python install.py
 ```
 
 ### Development Installation
@@ -90,7 +84,7 @@ rm vars.yaml
 
 ### As a NetworkManager Dispatcher Script
 
-When installed via `setup.py`, the script runs automatically when network interfaces change:
+When installed via `install.py`, the script runs automatically when network interfaces change:
 
 ```bash
 # Trigger manually (for testing)
@@ -118,9 +112,8 @@ cflan/
 ├── .github/workflows/    # CI/CD configuration
 ├── tests/                # Test suite
 ├── set_dns.py           # Main application script
-├── setup.py             # Installation script
+├── install.py           # Installation script
 ├── vars.yaml            # Configuration (unencrypted)
-├── sops_vars.yaml       # Configuration (encrypted)
 ├── pyproject.toml       # Project metadata and tool config
 ├── requirements.txt     # Production dependencies
 ├── requirements-dev.txt # Development dependencies
@@ -178,7 +171,7 @@ GitHub Actions runs the following on every push and PR:
 ## Troubleshooting
 
 ### "Must run as root"
-The setup script requires root privileges to install files to `/etc/NetworkManager/dispatcher.d/`.
+The install script requires root privileges to install files to `/etc/NetworkManager/dispatcher.d/`.
 
 ### "sops must be installed"
 If using `sops_vars.yaml`, ensure SOPS is installed: https://github.com/getsops/sops
