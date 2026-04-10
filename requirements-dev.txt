@@ -12,3 +12,4 @@ types-requests
 
 # Linting and formatting (via pre-commit)
 pre-commit>=4.0.0
+vulture>=2.16
