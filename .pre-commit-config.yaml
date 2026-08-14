@@ -34,7 +34,7 @@ repos:
       - id: vulture
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 41e691678310dfd3833f7ab4e180ddb014310356 # v2.3.0
+    rev: a66e98df7b4aeeb3724184b332785976d062b92e # v1.19.1
     hooks:
       - id: mypy
         exclude: ^tests/
