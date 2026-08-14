@@ -20,7 +20,6 @@ import yaml
 
 
 def get_local_ip() -> str:
-    """Get the local IP address."""
     local_ip_addr = ""
     try:
         local_ip_addr = socket.gethostbyname(socket.gethostname() + ".local")
@@ -32,7 +31,6 @@ def get_local_ip() -> str:
 
 
 def validate_network_manager_args(local_ip_addr: str) -> None:
-    """Validate NetworkManager arguments."""
     print("Parsing NetworkManager arguments...")
     try:
         if (
@@ -67,7 +65,6 @@ def validate_network_manager_args(local_ip_addr: str) -> None:
 
 
 def get_yaml_vars() -> dict[str, Any]:
-    """Get YAML variables from vars.yaml or sops_vars.yaml."""
     print("Getting unencrypted values from vars.yaml ...")
     try:
         with open("vars.yaml") as f:
@@ -94,7 +91,6 @@ def get_yaml_vars() -> dict[str, Any]:
 
 
 def get_zone_info(cf: CloudFlare.CloudFlare, domain_name: str) -> tuple[str, str]:
-    """Get CloudFlare DNS Zone ID and Name."""
     print("Getting CloudFlare DNS Zone ID and Name...")
     zone_data = cf.zones.get(params={"per_page": "1", "name": domain_name})[0]
     return zone_data["id"], zone_data["name"]
@@ -103,7 +99,6 @@ def get_zone_info(cf: CloudFlare.CloudFlare, domain_name: str) -> tuple[str, str
 def get_dns_record_id(
     cf: CloudFlare.CloudFlare, zone_id: str, hostname: str, zone_name: str
 ) -> str:
-    """Get existing DNS record ID if it exists."""
     print(
         "Attempting to get existing DNS record for "
         + hostname
@@ -131,7 +126,6 @@ def get_dns_record_id(
 def create_dns_record(
     cf: CloudFlare.CloudFlare, zone_id: str, hostname: str, ip_addr: str
 ) -> None:
-    """Create a new DNS record."""
     print("Record not found...")
     print("Creating new record for " + hostname + "...")
     try:
@@ -147,7 +141,6 @@ def create_dns_record(
 def update_dns_record(
     cf: CloudFlare.CloudFlare, zone_id: str, dns_id: str, hostname: str, ip_addr: str
 ) -> None:
-    """Update existing DNS record with new IP."""
     print("Getting IP address for existing record...")
     dns_content = cf.zones.dns_records.get(
         zone_id,
@@ -179,7 +172,6 @@ def update_dns_record(
 
 
 def set_dns() -> None:
-    """Main function to set DNS records."""
     local_ip_addr = get_local_ip()
 
     print("Using IP address " + local_ip_addr + " ...")
