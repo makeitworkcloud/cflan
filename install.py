@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Install script for cflan - NetworkManager dispatcher setup."""
-
 import os
 import shutil
 import sys
 
 
 def install() -> None:
-    """Deploy NetworkManager dispatcher script and configuration files."""
     if os.getuid() != 0:
         sys.exit("Error: Must run as root")
 
@@ -23,7 +20,6 @@ def install() -> None:
     print("\nDeploying configuration...")
     config_deployed = False
 
-    # Try unencrypted config first
     vars_path = os.path.join(script_dir, "vars.yaml")
     if os.path.exists(vars_path):
         target_path = "/vars.yaml"
@@ -33,7 +29,6 @@ def install() -> None:
         print(f"  Installed: {target_path}")
         config_deployed = True
 
-    # Fall back to sops encrypted config
     sops_path = os.path.join(script_dir, "sops_vars.yaml")
     if not config_deployed and os.path.exists(sops_path):
         target_path = "/sops_vars.yaml"
