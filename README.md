@@ -68,6 +68,15 @@ A dry run never constructs a Cloudflare client or calls the Cloudflare API, so i
 - Existing records are updated with Cloudflare PATCH rather than delete-and-recreate, preserving the record and avoiding an avoidable DNS gap.
 - SOPS plaintext exists only in the updater process memory.
 
+## Releases
+
+CFLAN uses a GitHub-Release-only CD lifecycle:
+
+- A successful `ci` workflow run for a push to `main` automatically builds the wheel and sdist and creates a GitHub Release tagged `v<version>` from the `version` field in `pyproject.toml`, attaching the built distributions and a `SHA256SUMS` checksum file, when no release for that version exists yet.
+- To publish a new release, increase `version` in `pyproject.toml` before the change lands on `main`. If a release for the tag already exists the CD job skips cleanly; if the tag exists without a release the job fails closed and never moves or reuses the tag for a different revision.
+- No PyPI publishing is performed; GitHub Releases are the only distribution channel.
+- A GitHub Release records that artifacts were published for a CI-tested revision; it is not installed-host validation and does not prove the updater ran correctly on any host.
+
 ## Development
 
 ```bash
