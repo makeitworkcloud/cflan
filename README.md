@@ -57,7 +57,7 @@ The installer copies `set_dns.py` to `/etc/NetworkManager/dispatcher.d/set_dns` 
 
 `set_dns.py --dry-run [--config PATH]` is a non-mutating preflight check. It validates root-volume configuration selection and parsing, the resolved local IPv4 address, the dispatcher positional arguments (`interface`/`action`) when present, and the derived FQDN, then prints the intended reconciliation and exits successfully without constructing a Cloudflare client or performing any Cloudflare API call.
 
-A dry run never contacts Cloudflare, so it does not prove the API token is valid. It also does not verify SOPS key availability for the root user, and it does not install or execute the NetworkManager dispatcher hook. Normal behavior is unchanged when `--dry-run` is omitted.
+A dry run never constructs a Cloudflare client or calls the Cloudflare API, so it does not prove the API token is valid. When the selected configuration is SOPS-encrypted (`cflan_sops_vars.yaml` or `sops_vars.yaml`), the dry run does invoke SOPS locally to decrypt it, so it exercises SOPS and key availability for the invoking user without writing plaintext to disk. It does not install or execute the actual NetworkManager dispatcher hook. Normal behavior is unchanged when `--dry-run` is omitted.
 
 ## Behavior and safety
 
