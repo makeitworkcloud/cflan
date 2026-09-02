@@ -17,6 +17,8 @@ Preserve these compatibility contracts unless a change explicitly documents a mi
 3. Run `pre-commit run --all-files`, `python -m pytest --cov`, `mypy set_dns.py`, and `python -m build`.
 4. Open a pull request explaining configuration, DNS, and rollback impact.
 
+`python3 set_dns.py --dry-run [--config PATH]` is available as a non-mutating preflight for local configuration checks. It never constructs a Cloudflare client or calls the Cloudflare API, so it does not validate Cloudflare credentials. When the selected configuration is SOPS-encrypted (`cflan_sops_vars.yaml` or `sops_vars.yaml`), it does invoke SOPS locally to decrypt the file, so it exercises SOPS and key availability for the invoking user without writing plaintext to disk. It does not install or execute the actual NetworkManager dispatcher hook, and it is not a substitute for CI.
+
 CI is the validation authority. A passing unit-test suite does not prove that a changed dispatcher hook, SOPS configuration, or Cloudflare token works in an installed host.
 
 ## Pull requests

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import socket
 import subprocess
@@ -300,10 +301,70 @@ def set_dns(
         update_dns_record(client, zone_id, record, record_name, local_ip_addr)
 
 
+def dry_run(
+    argv: Sequence[str] | None = None,
+    config_path: str | None = None,
+) -> None:
+    """Validate inputs and report the intended reconciliation without a client."""
+    local_ip_addr = get_local_ip()
+    if not validate_network_manager_args(local_ip_addr, argv):
+        return
+
+    config = parse_config(get_yaml_vars(config_path))
+    record_name = get_record_name(config)
+    print(
+        "Dry run: would reconcile A record "
+        f"{record_name} to {local_ip_addr} "
+        f"(ttl={config.ttl}, proxied={config.proxied})."
+    )
+    print("Dry run: no Cloudflare client was constructed and no API calls were made.")
+
+
+def build_argument_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, preserving dispatcher positional arguments."""
+    parser = argparse.ArgumentParser(
+        prog="set_dns",
+        description="Update one Cloudflare A record for this host's IPv4 address.",
+    )
+    parser.add_argument(
+        "interface",
+        nargs="?",
+        help="NetworkManager dispatcher interface name (optional).",
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        help="NetworkManager dispatcher action; only 'up' updates DNS (optional).",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Override the root-volume configuration path.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs and report the intended reconciliation without "
+        "constructing a Cloudflare client or calling the API.",
+    )
+    return parser
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the dispatcher entry point without leaking configuration values."""
+    raw_args = tuple(sys.argv if argv is None else argv)
+    namespace = build_argument_parser().parse_args(list(raw_args[1:]))
+    dispatcher_argv = [raw_args[0]] if raw_args else ["set_dns"]
+    if namespace.interface is not None:
+        dispatcher_argv.append(namespace.interface)
+    if namespace.action is not None:
+        dispatcher_argv.append(namespace.action)
+
     try:
-        set_dns(argv=argv)
+        if namespace.dry_run:
+            dry_run(argv=dispatcher_argv, config_path=namespace.config)
+        else:
+            set_dns(argv=dispatcher_argv, config_path=namespace.config)
     except CflanError as error:
         print(f"cflan: {error}", file=sys.stderr)
         return 1

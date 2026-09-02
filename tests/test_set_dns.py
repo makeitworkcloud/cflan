@@ -217,6 +217,95 @@ class TestCloudflareReconciliation:
         client.dns.records.edit.assert_not_called()
 
 
+class TestDryRun:
+    @pytest.fixture
+    def config_file(self, tmp_path):
+        path = tmp_path / "cflan_vars.yaml"
+        path.write_text(
+            "cf_token: test-token\ncf_domain_name: example.com\n", encoding="utf-8"
+        )
+        return path
+
+    @patch("set_dns.Cloudflare")
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_avoids_client_construction(
+        self, _, __, mock_cloudflare, config_file, capsys
+    ):
+        assert set_dns.main(["set_dns", "--dry-run", "--config", str(config_file)]) == 0
+
+        mock_cloudflare.assert_not_called()
+        assert "no Cloudflare client" in capsys.readouterr().out
+
+    @patch("set_dns.set_dns")
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_never_enters_reconciliation(
+        self, _, __, mock_set_dns, config_file
+    ):
+        assert set_dns.main(["set_dns", "--dry-run", "--config", str(config_file)]) == 0
+
+        mock_set_dns.assert_not_called()
+
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_reports_intended_action(self, _, __, config_file, capsys):
+        assert set_dns.main(["set_dns", "--dry-run", "--config", str(config_file)]) == 0
+
+        output = capsys.readouterr().out
+        assert "would reconcile A record" in output
+        assert "host.example.com" in output
+        assert "192.168.1.100" in output
+        assert "test-token" not in output
+
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_config_override_reaches_config_selection(self, _, __, config_file, capsys):
+        assert set_dns.main(["set_dns", "--dry-run", "--config", str(config_file)]) == 0
+
+        assert str(config_file) in capsys.readouterr().out
+
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_rejects_invalid_config(self, _, __, tmp_path):
+        bad_config = tmp_path / "cflan_vars.yaml"
+        bad_config.write_text("cf_domain_name: example.com\n", encoding="utf-8")
+
+        assert set_dns.main(["set_dns", "--dry-run", "--config", str(bad_config)]) == 1
+
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_preserves_dispatcher_arguments(
+        self, _, __, monkeypatch, config_file
+    ):
+        mock_netifaces = MagicMock()
+        mock_netifaces.AF_INET = 2
+        mock_netifaces.ifaddresses.return_value = {2: [{"addr": "192.168.1.100"}]}
+        monkeypatch.setattr(set_dns, "netifaces", mock_netifaces)
+
+        assert (
+            set_dns.main(
+                ["set_dns", "eth0", "up", "--dry-run", "--config", str(config_file)]
+            )
+            == 0
+        )
+        mock_netifaces.ifaddresses.assert_called_once_with("eth0")
+
+    @patch("set_dns.socket.gethostbyname", return_value="192.168.1.100")
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_dry_run_skips_non_up_dispatcher_action(self, _, __, config_file, capsys):
+        assert (
+            set_dns.main(
+                ["set_dns", "eth0", "down", "--dry-run", "--config", str(config_file)]
+            )
+            == 0
+        )
+
+        output = capsys.readouterr().out
+        assert "Skipping NetworkManager action" in output
+        assert "would reconcile" not in output
+
+
 class TestEntrypoint:
     @patch("set_dns.set_dns", side_effect=set_dns.CflanError("bad configuration"))
     def test_main_returns_nonzero_for_expected_failure(self, _):
