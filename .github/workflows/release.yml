@@ -1,0 +1,127 @@
+name: release
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Only a successful ci run for a push to main may release. Pull-request
+    # ci runs and pushes to any other branch are rejected here.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    steps:
+      - name: Checkout the exact CI-tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Read the package version from pyproject.toml
+        id: version
+        run: |
+          version=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              print(tomllib.load(f)["project"]["version"])
+          PY
+          )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing release and tag state
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $tag already exists; skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "ERROR: tag $tag already exists but has no GitHub Release." >&2
+            echo "Refusing to move or reuse the tag for a different revision." >&2
+            exit 1
+          fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+
+      # The release body must come from an explicit, versioned changelog
+      # section. If the heading or its content is missing, fail closed here,
+      # before any tag or release is created.
+      - name: Extract the versioned release notes from CHANGELOG.md
+        id: notes
+        if: steps.gate.outputs.exists != 'true'
+        run: |
+          python - "${{ steps.version.outputs.version }}" <<'PY'
+          import re
+          import sys
+
+          version = sys.argv[1]
+          with open("CHANGELOG.md", encoding="utf-8") as f:
+              changelog = f.read()
+          match = re.search(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
+              changelog,
+              re.MULTILINE | re.DOTALL,
+          )
+          if match is None or not match.group(1).strip():
+              print(
+                  f"ERROR: CHANGELOG.md has no '## [{version}]' section with content.",
+                  file=sys.stderr,
+              )
+              print(
+                  "Every pull request must add a user-facing note under '## Unreleased'; "
+                  "when the version in pyproject.toml is increased, those notes must be "
+                  f"promoted into a '## [{version}] - YYYY-MM-DD' section in the same commit. "
+                  "Refusing to create a tag or release without explicit release notes.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          notes = match.group(1).strip()
+          with open("RELEASE_NOTES.md", "w", encoding="utf-8") as f:
+              f.write(notes + "\n")
+          print(f"Extracted release notes for {version}:")
+          print(notes)
+          PY
+
+      - name: Build wheel and source distribution
+        if: steps.gate.outputs.exists != 'true'
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Generate SHA256 checksums for release assets
+        if: steps.gate.outputs.exists != 'true'
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release with artifacts
+        if: steps.gate.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          gh release create "$tag" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.event.workflow_run.head_sha }}" \
+            --title "$tag" \
+            --notes-file RELEASE_NOTES.md \
+            dist/*

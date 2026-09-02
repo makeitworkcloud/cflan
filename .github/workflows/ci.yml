@@ -88,3 +88,29 @@ jobs:
 
       - name: Run mypy type checking
         run: mypy set_dns.py
+
+  changelog:
+    runs-on: ubuntu-latest
+    # Changelog enforcement applies only to pull requests. Release publication
+    # is gated separately by release.yml on the versioned section.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Require a CHANGELOG.md update in this pull request
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- CHANGELOG.md; then
+            echo "ERROR: this pull request does not change CHANGELOG.md." >&2
+            echo "Every pull request must add a reader-ready, user-facing note under" >&2
+            echo "'## Unreleased' in CHANGELOG.md. When the change increases 'version' in" >&2
+            echo "pyproject.toml, promote the Unreleased notes into a" >&2
+            echo "'## [<version>] - YYYY-MM-DD' section in the same commit; the release CD" >&2
+            echo "publishes exactly that versioned section as the GitHub Release body." >&2
+            exit 1
+          fi
+          echo "CHANGELOG.md changed between $BASE_SHA and $HEAD_SHA."
