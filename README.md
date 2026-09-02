@@ -70,12 +70,13 @@ A dry run never constructs a Cloudflare client or calls the Cloudflare API, so i
 
 ## Releases
 
-CFLAN uses a GitHub-Release-only CD lifecycle:
+CFLAN uses a GitHub-Release-only CD lifecycle with an enforced changelog:
 
+- Every pull request must update [CHANGELOG.md](CHANGELOG.md) with a reader-ready, user-facing note under `## Unreleased`; a dedicated CI job fails any pull request that does not change the changelog. When `version` in `pyproject.toml` is increased, the accumulated Unreleased notes are promoted into a `## [<version>] - YYYY-MM-DD` section in the same commit.
 - A successful `ci` workflow run for a push to `main` automatically builds the wheel and sdist and creates a GitHub Release tagged `v<version>` from the `version` field in `pyproject.toml`, attaching the built distributions and a `SHA256SUMS` checksum file, when no release for that version exists yet.
-- To publish a new release, increase `version` in `pyproject.toml` before the change lands on `main`. If a release for the tag already exists the CD job skips cleanly; if the tag exists without a release the job fails closed and never moves or reuses the tag for a different revision.
+- The release body is exactly the `## [<version>]` section of `CHANGELOG.md`, extracted at release time and passed to `gh release create --notes-file`. If that heading or its content is absent, the CD job fails closed before any tag or release is created. If a release for the tag already exists the job skips cleanly; if the tag exists without a release the job fails closed and never moves or reuses the tag for a different revision.
 - No PyPI publishing is performed; GitHub Releases are the only distribution channel.
-- A GitHub Release records that artifacts were published for a CI-tested revision; it is not installed-host validation and does not prove the updater ran correctly on any host.
+- A GitHub Release records that artifacts were published for a CI-tested revision; it is not installed-host validation and does not prove installation, host, or DNS behavior.
 
 ## Development
 
@@ -88,7 +89,7 @@ mypy set_dns.py
 python -m build
 ```
 
-CI runs formatting/linting hooks, unit tests and coverage on Python 3.10–3.13, mypy, and a wheel build/install smoke test. Unit tests do not contact Cloudflare or invoke NetworkManager.
+CI runs formatting/linting hooks, unit tests and coverage on Python 3.10–3.13, mypy, a wheel build/install smoke test, and changelog enforcement for pull requests. Unit tests do not contact Cloudflare or invoke NetworkManager.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before opening an issue or pull request.
 

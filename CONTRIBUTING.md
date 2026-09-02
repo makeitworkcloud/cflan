@@ -15,7 +15,8 @@ Preserve these compatibility contracts unless a change explicitly documents a mi
 1. Create a focused branch and add unit tests for behavior changes.
 2. Install development dependencies with `python -m pip install '.[dev]'`.
 3. Run `pre-commit run --all-files`, `python -m pytest --cov`, `mypy set_dns.py`, and `python -m build`.
-4. Open a pull request explaining configuration, DNS, and rollback impact.
+4. Add a reader-ready, user-facing note under `## Unreleased` in `CHANGELOG.md` (required; see below).
+5. Open a pull request explaining configuration, DNS, and rollback impact.
 
 `python3 set_dns.py --dry-run [--config PATH]` is available as a non-mutating preflight for local configuration checks. It never constructs a Cloudflare client or calls the Cloudflare API, so it does not validate Cloudflare credentials. When the selected configuration is SOPS-encrypted (`cflan_sops_vars.yaml` or `sops_vars.yaml`), it does invoke SOPS locally to decrypt the file, so it exercises SOPS and key availability for the invoking user without writing plaintext to disk. It does not install or execute the actual NetworkManager dispatcher hook, and it is not a substitute for CI.
 
@@ -24,3 +25,12 @@ CI is the validation authority. A passing unit-test suite does not prove that a 
 ## Pull requests
 
 Keep changes narrow. Document any changed default configuration name, API permission, record behavior, package version, or installed-path contract. Reviewers must be able to determine whether the change is source-only or requires a separate installation step.
+
+Changelog and release policy:
+
+- Every pull request must update `CHANGELOG.md` with a reader-ready, user-facing note under `## Unreleased`. CI enforces this and fails any pull request that does not change the changelog.
+- When a change increases `version` in `pyproject.toml`, promote the accumulated Unreleased notes into a `## [<version>] - YYYY-MM-DD` section in the same commit.
+- The release CD publishes exactly the `## [<version>]` section as the GitHub Release body via `gh release create --notes-file`, and fails closed before creating any tag or release when that section is missing or empty.
+- Release publication is artifact publication only; it does not prove installation, host, or DNS behavior.
+
+Fill in every section of the pull request template, including the required `## Documentation and changelog` checklist.

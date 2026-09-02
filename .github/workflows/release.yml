@@ -61,6 +61,45 @@ jobs:
           fi
           echo "exists=false" >> "$GITHUB_OUTPUT"
 
+      # The release body must come from an explicit, versioned changelog
+      # section. If the heading or its content is missing, fail closed here,
+      # before any tag or release is created.
+      - name: Extract the versioned release notes from CHANGELOG.md
+        id: notes
+        if: steps.gate.outputs.exists != 'true'
+        run: |
+          python - "${{ steps.version.outputs.version }}" <<'PY'
+          import re
+          import sys
+
+          version = sys.argv[1]
+          with open("CHANGELOG.md", encoding="utf-8") as f:
+              changelog = f.read()
+          match = re.search(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
+              changelog,
+              re.MULTILINE | re.DOTALL,
+          )
+          if match is None or not match.group(1).strip():
+              print(
+                  f"ERROR: CHANGELOG.md has no '## [{version}]' section with content.",
+                  file=sys.stderr,
+              )
+              print(
+                  "Every pull request must add a user-facing note under '## Unreleased'; "
+                  "when the version in pyproject.toml is increased, those notes must be "
+                  f"promoted into a '## [{version}] - YYYY-MM-DD' section in the same commit. "
+                  "Refusing to create a tag or release without explicit release notes.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          notes = match.group(1).strip()
+          with open("RELEASE_NOTES.md", "w", encoding="utf-8") as f:
+              f.write(notes + "\n")
+          print(f"Extracted release notes for {version}:")
+          print(notes)
+          PY
+
       - name: Build wheel and source distribution
         if: steps.gate.outputs.exists != 'true'
         run: |
@@ -84,5 +123,5 @@ jobs:
             --repo "${{ github.repository }}" \
             --target "${{ github.event.workflow_run.head_sha }}" \
             --title "$tag" \
-            --generate-notes \
+            --notes-file RELEASE_NOTES.md \
             dist/*
