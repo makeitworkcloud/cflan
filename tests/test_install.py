@@ -1,8 +1,25 @@
-from unittest.mock import MagicMock
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import install
+
+
+@contextmanager
+def running_as_root() -> Iterator[None]:
+    """Patch getuid only around install() so tmp_path setup stays unpatched."""
+    with patch("os.getuid", return_value=0):
+        yield
+
+
+@contextmanager
+def mocked_privileged_calls() -> Iterator[MagicMock]:
+    """Capture chown/chmod without touching the filesystem ownership."""
+    calls = MagicMock()
+    with patch("os.chown", calls.chown), patch("os.chmod", calls.chmod):
+        yield calls
 
 
 @pytest.fixture
@@ -20,30 +37,15 @@ def dispatcher_path(tmp_path):
     return dispatcher_dir / "set_dns"
 
 
-@pytest.fixture
-def as_root(monkeypatch):
-    monkeypatch.setattr("os.getuid", lambda: 0)
-
-
-@pytest.fixture
-def privileged_calls(monkeypatch):
-    calls = MagicMock()
-    monkeypatch.setattr("os.chown", calls.chown)
-    monkeypatch.setattr("os.chmod", calls.chmod)
-    return calls
-
-
 class TestInstall:
-    def test_requires_root(self, monkeypatch):
-        monkeypatch.setattr("os.getuid", lambda: 1000)
-
-        with pytest.raises(SystemExit):
+    def test_requires_root(self):
+        with patch("os.getuid", return_value=1000), pytest.raises(SystemExit):
             install.install()
 
-    def test_missing_dispatcher_directory_fails(self, as_root, source_dir, tmp_path):
+    def test_missing_dispatcher_directory_fails(self, source_dir, tmp_path):
         missing_target = tmp_path / "missing" / "set_dns"
 
-        with pytest.raises(SystemExit):
+        with running_as_root(), pytest.raises(SystemExit):
             install.install(
                 source_dir=source_dir,
                 dispatcher_path=missing_target,
@@ -51,7 +53,7 @@ class TestInstall:
             )
 
     def test_preferred_config_wins_over_aliases(
-        self, as_root, privileged_calls, source_dir, dispatcher_path, tmp_path
+        self, source_dir, dispatcher_path, tmp_path
     ):
         (source_dir / "cflan_vars.yaml").write_text(
             "cf_token: test-token\n", encoding="utf-8"
@@ -62,57 +64,54 @@ class TestInstall:
         preferred_target = tmp_path / "cflan_vars.yaml"
         legacy_target = tmp_path / "vars.yaml"
 
-        install.install(
-            source_dir=source_dir,
-            dispatcher_path=dispatcher_path,
-            config_files=(
-                ("cflan_vars.yaml", str(preferred_target)),
-                ("vars.yaml", str(legacy_target)),
-            ),
-        )
+        with running_as_root(), mocked_privileged_calls():
+            install.install(
+                source_dir=source_dir,
+                dispatcher_path=dispatcher_path,
+                config_files=(
+                    ("cflan_vars.yaml", str(preferred_target)),
+                    ("vars.yaml", str(legacy_target)),
+                ),
+            )
 
         assert dispatcher_path.is_file()
         assert preferred_target.is_file()
         assert not legacy_target.exists()
 
     def test_legacy_config_mapping_remains_valid(
-        self, as_root, privileged_calls, source_dir, dispatcher_path, tmp_path
+        self, source_dir, dispatcher_path, tmp_path
     ):
         (source_dir / "vars.yaml").write_text(
             "cf_token: test-token\n", encoding="utf-8"
         )
         legacy_target = tmp_path / "vars.yaml"
 
-        install.install(
-            source_dir=source_dir,
-            dispatcher_path=dispatcher_path,
-            config_files=(
-                ("cflan_vars.yaml", str(tmp_path / "cflan_vars.yaml")),
-                ("vars.yaml", str(legacy_target)),
-            ),
-        )
+        with running_as_root(), mocked_privileged_calls():
+            install.install(
+                source_dir=source_dir,
+                dispatcher_path=dispatcher_path,
+                config_files=(
+                    ("cflan_vars.yaml", str(tmp_path / "cflan_vars.yaml")),
+                    ("vars.yaml", str(legacy_target)),
+                ),
+            )
 
         assert legacy_target.is_file()
 
     def test_installer_reports_targets_with_expected_ownership_and_modes(
-        self,
-        as_root,
-        privileged_calls,
-        source_dir,
-        dispatcher_path,
-        tmp_path,
-        capsys,
+        self, source_dir, dispatcher_path, tmp_path, capsys
     ):
         (source_dir / "cflan_vars.yaml").write_text(
             "cf_token: test-token\n", encoding="utf-8"
         )
         config_target = tmp_path / "cflan_vars.yaml"
 
-        install.install(
-            source_dir=source_dir,
-            dispatcher_path=dispatcher_path,
-            config_files=(("cflan_vars.yaml", str(config_target)),),
-        )
+        with running_as_root(), mocked_privileged_calls() as privileged_calls:
+            install.install(
+                source_dir=source_dir,
+                dispatcher_path=dispatcher_path,
+                config_files=(("cflan_vars.yaml", str(config_target)),),
+            )
 
         privileged_calls.chown.assert_any_call(dispatcher_path, 0, 0)
         privileged_calls.chown.assert_any_call(config_target, 0, 0)
@@ -123,13 +122,14 @@ class TestInstall:
         assert f"Installed: {config_target}" in output
 
     def test_missing_config_warns_without_installing_one(
-        self, as_root, privileged_calls, source_dir, dispatcher_path, capsys
+        self, source_dir, dispatcher_path, capsys
     ):
-        install.install(
-            source_dir=source_dir,
-            dispatcher_path=dispatcher_path,
-            config_files=(("cflan_vars.yaml", "/should-not-be-used"),),
-        )
+        with running_as_root(), mocked_privileged_calls() as privileged_calls:
+            install.install(
+                source_dir=source_dir,
+                dispatcher_path=dispatcher_path,
+                config_files=(("cflan_vars.yaml", "/should-not-be-used"),),
+            )
 
         output = capsys.readouterr().out
         assert "Warning: No configuration file found." in output
