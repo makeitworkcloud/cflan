@@ -99,7 +99,7 @@ class TestConfiguration:
         "set_dns.Path.read_text",
         return_value="cf_token: test-token\ncf_domain_name: example.com",
     )
-    def test_reads_plaintext_yaml(self, mock_read, _):
+    def test_reads_plaintext_yaml(self, mock_read):
         values = set_dns.read_config_file(Path("/cflan_vars.yaml"), encrypted=False)
 
         assert values["cf_token"] == "test-token"
