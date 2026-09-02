@@ -1,199 +1,82 @@
 # CFLAN
 
-[![CI](https://github.com/welchworks/cflan/actions/workflows/ci.yml/badge.svg)](https://github.com/welchworks/cflan/actions/workflows/ci.yml)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/makeitworkcloud/cflan/actions/workflows/ci.yml/badge.svg)](https://github.com/makeitworkcloud/cflan/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> Integrating LAN infrastructure with Cloudflare services
+> NetworkManager-driven Cloudflare DNS updates for LAN hosts.
 
-CFLAN automatically updates Cloudflare DNS records with your local machine's IP address whenever your network connection changes. This is particularly useful for home servers, NAS devices, or any machine that needs a consistent DNS name despite having a dynamic local IP.
+CFLAN reconciles one Cloudflare A record with a machine's active IPv4 address when a NetworkManager interface comes up. It is designed for root-owned configuration supplied from the host's root/volume area; it does not create, persist, or print credentials.
 
-## Features
+## Requirements
 
-- **Automatic DNS Updates**: Updates Cloudflare DNS A records when network interfaces come up
-- **NetworkManager Integration**: Runs as a NetworkManager dispatcher script
-- **SOPS Support**: Supports encrypted configuration using [SOPS](https://github.com/getsops/sops)
-- **IP Validation**: Ensures the correct interface IP is used before updating
-- **Idempotent**: Only updates DNS when the IP address has actually changed
+- Linux with NetworkManager dispatcher support
+- Python 3.10 or later
+- A Cloudflare API token limited to **Zone / DNS / Edit** for the target zone
+- Optional: SOPS available and configured for root when using encrypted configuration
 
-## Prerequisites
+## Configuration contract
 
-- Python 3.9 or higher
-- NetworkManager (for dispatcher script functionality)
-- Root access (for installing dispatcher scripts)
-- Cloudflare API Token with DNS edit permissions
-- (Optional) SOPS for encrypted configuration files
+CFLAN searches these root-volume paths in order:
+
+1. `/cflan_vars.yaml` — preferred plaintext name
+2. `/cflan_sops_vars.yaml` — preferred SOPS-encrypted name
+3. `/vars.yaml` — supported legacy alias
+4. `/sops_vars.yaml` — supported legacy SOPS alias
+
+`CFLAN_CONFIG` can override the path for a controlled deployment. The existing `/vars.yaml` and `/sops_vars.yaml` contract remains supported; no secret is copied into another directory by the updater.
+
+Example structure (do **not** commit a real token):
+
+```yaml
+cf_token: "replace-with-a-Cloudflare-API-token"
+cf_domain_name: "example.com"
+# Optional full FQDN; defaults to <hostname>.<cf_domain_name>
+# cf_record_name: "host.example.com"
+# Optional; 1 means Cloudflare automatic TTL
+# cf_ttl: 1
+# Optional; defaults to false to avoid proxying a LAN address
+# cf_proxied: false
+```
 
 ## Installation
 
-### From Source
+The existing installation model is preserved: place one configuration file beside the scripts, then run the root-only installer.
 
 ```bash
-# Clone the repository
-git clone https://github.com/welchworks/cflan.git
+git clone https://github.com/makeitworkcloud/cflan.git
 cd cflan
-
-# Create configuration file (see Configuration section below)
-# Then install (requires root)
-sudo python install.py
+sudo python3 install.py
 ```
 
-### Development Installation
+The installer copies `set_dns.py` to `/etc/NetworkManager/dispatcher.d/set_dns` with mode `0700`. It copies the first configuration filename it finds in the priority listed above to its matching root-volume path with mode `0600`.
 
-```bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-pre-commit install
-```
+> A Cloudflare DNS record containing an RFC1918 address is useful only for clients that can route to that LAN. CFLAN does not make a private address reachable from the public Internet.
 
-## Configuration
+## Behavior and safety
 
-Create a configuration file with your Cloudflare credentials:
-
-### Option 1: Plain YAML (`vars.yaml`)
-
-```yaml
-cf_token: "your-cloudflare-api-token"
-cf_domain_name: "example.com"
-```
-
-### Option 2: Encrypted with SOPS (`sops_vars.yaml`)
-
-```bash
-# Create encrypted config
-cat > vars.yaml <<EOF
-cf_token: "your-cloudflare-api-token"
-cf_domain_name: "example.com"
-EOF
-
-# Encrypt with SOPS
-sops encrypt vars.yaml > sops_vars.yaml
-rm vars.yaml
-```
-
-### Cloudflare API Token Setup
-
-1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
-2. Click "Create Token"
-3. Use the "Edit zone DNS" template
-4. Select your zone (domain)
-5. Create the token and copy it for your config
-
-## Usage
-
-### As a NetworkManager Dispatcher Script
-
-When installed via `install.py`, the script runs automatically when network interfaces change:
-
-```bash
-# Trigger manually (for testing)
-sudo /etc/NetworkManager/dispatcher.d/set_dns eth0 up
-```
-
-### Standalone Execution
-
-```bash
-# From the project directory
-python set_dns.py
-```
-
-The script will:
-1. Detect your local IP address
-2. Read configuration from `vars.yaml` or decrypt `sops_vars.yaml`
-3. Find the Cloudflare zone for your domain
-4. Check for an existing DNS record
-5. Create or update the A record with your current IP
-
-## Project Structure
-
-```
-cflan/
-├── .github/workflows/    # CI/CD configuration
-├── tests/                # Test suite
-├── set_dns.py           # Main application script
-├── install.py           # Installation script
-├── vars.yaml            # Configuration (unencrypted)
-├── pyproject.toml       # Project metadata and tool config
-├── requirements.txt     # Production dependencies
-├── requirements-dev.txt # Development dependencies
-└── README.md            # This file
-```
+- Only NetworkManager `up` events update DNS; other dispatcher events are skipped.
+- The interface IPv4 address must equal the resolved primary host IPv4 address.
+- Loopback, multicast, unspecified, and malformed addresses are rejected before any API call.
+- Exactly one matching zone and zero or one matching A record are required. Duplicate records fail closed.
+- Existing records are updated with Cloudflare PATCH rather than delete-and-recreate, preserving the record and avoiding an avoidable DNS gap.
+- SOPS plaintext exists only in the updater process memory.
 
 ## Development
 
-### Running Tests
-
 ```bash
-pytest
-```
-
-With coverage:
-
-```bash
-pytest --cov=cflan --cov-report=term-missing
-```
-
-### Code Quality
-
-This project uses:
-- **Ruff**: Fast Python linter and formatter
-- **MyPy**: Static type checking
-- **Pre-commit**: Git hooks for code quality
-
-```bash
-# Run linting
+python -m pip install '.[dev]'
+python -m pytest --cov
 ruff check .
-ruff format .
-
-# Run type checking
+ruff format --check .
 mypy set_dns.py
-
-# Run all pre-commit hooks
-pre-commit run --all-files
+python -m build
 ```
 
-### Continuous Integration
+CI runs formatting/linting hooks, unit tests and coverage on Python 3.10–3.13, mypy, and a wheel build/install smoke test. Unit tests do not contact Cloudflare or invoke NetworkManager.
 
-GitHub Actions runs the following on every push and PR:
-- Pre-commit hooks
-- Tests across Python 3.9-3.13
-- Type checking with mypy
-- Coverage reporting
-
-## Security Notes
-
-- The configuration file (`vars.yaml` or `sops_vars.yaml`) is installed with `600` permissions (readable only by root)
-- The dispatcher script is installed with `700` permissions (executable only by root)
-- Use SOPS encryption for production deployments to protect API tokens
-- Store your Cloudflare API Token securely; it grants DNS edit access
-
-## Troubleshooting
-
-### "Must run as root"
-The install script requires root privileges to install files to `/etc/NetworkManager/dispatcher.d/`.
-
-### "sops must be installed"
-If using `sops_vars.yaml`, ensure SOPS is installed: https://github.com/getsops/sops
-
-### "The IP address is a value for localhost"
-The script prevents updating DNS with localhost addresses (127.0.0.x). Check your network configuration.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before opening an issue or pull request.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## Author
-
-**Steven Welch** - steven@makeitwork.cloud
-
-Project Link: [https://github.com/welchworks/cflan](https://github.com/welchworks/cflan)
+CFLAN is licensed under [GPL-3.0](LICENSE).

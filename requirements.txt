@@ -1,3 +1,5 @@
-cloudflare
-netifaces
-PyYAML
+# Compatibility requirements file for existing root-volume installations.
+# Packaging metadata in pyproject.toml is the canonical dependency definition.
+cloudflare>=3,<6
+netifaces>=0.11,<1
+PyYAML>=6,<7
