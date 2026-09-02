@@ -32,7 +32,9 @@ class TestAddresses:
         assert set_dns.get_local_ip() == "192.168.1.100"
         assert mock_gethost.call_args_list[1].args == ("testhost.lan",)
 
-    @pytest.mark.parametrize("value", ["127.0.0.1", "0.0.0.0", "224.0.0.1", "not-an-ip"])
+    @pytest.mark.parametrize(
+        "value", ["127.0.0.1", "0.0.0.0", "224.0.0.1", "not-an-ip"]
+    )
     def test_validate_ipv4_rejects_unsuitable_addresses(self, value):
         with pytest.raises(set_dns.CflanError):
             set_dns.validate_ipv4(value)
@@ -89,8 +91,14 @@ class TestConfiguration:
         assert path == legacy
         assert not encrypted
 
-    @patch("builtins.open", mock_open(read_data="cf_token: test-token\ncf_domain_name: example.com"))
-    @patch("set_dns.Path.read_text", return_value="cf_token: test-token\ncf_domain_name: example.com")
+    @patch(
+        "builtins.open",
+        mock_open(read_data="cf_token: test-token\ncf_domain_name: example.com"),
+    )
+    @patch(
+        "set_dns.Path.read_text",
+        return_value="cf_token: test-token\ncf_domain_name: example.com",
+    )
     def test_reads_plaintext_yaml(self, mock_read, _):
         values = set_dns.read_config_file(Path("/cflan_vars.yaml"), encrypted=False)
 
@@ -99,7 +107,9 @@ class TestConfiguration:
 
     @patch("set_dns.subprocess.run")
     def test_reads_sops_yaml_without_writing_plaintext(self, mock_run):
-        mock_run.return_value.stdout = "cf_token: test-token\ncf_domain_name: example.com"
+        mock_run.return_value.stdout = (
+            "cf_token: test-token\ncf_domain_name: example.com"
+        )
 
         values = set_dns.read_config_file(Path("/cflan_sops_vars.yaml"), encrypted=True)
 
@@ -130,7 +140,10 @@ class TestCloudflareReconciliation:
             SimpleNamespace(id="zone-id", name="example.com")
         ]
 
-        assert set_dns.get_zone_info(client, "example.com") == ("zone-id", "example.com")
+        assert set_dns.get_zone_info(client, "example.com") == (
+            "zone-id",
+            "example.com",
+        )
 
     def test_get_dns_record_rejects_duplicates(self):
         client = MagicMock()

@@ -7,10 +7,11 @@ import os
 import socket
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from ipaddress import IPv4Address, AddressValueError
+from ipaddress import AddressValueError, IPv4Address
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import netifaces
 import yaml
@@ -54,7 +55,9 @@ def get_local_ip() -> str:
         except OSError as error:
             errors.append(error)
 
-    raise CflanError("Could not resolve a usable IPv4 address for this host.") from errors[-1]
+    raise CflanError(
+        "Could not resolve a usable IPv4 address for this host."
+    ) from errors[-1]
 
 
 def validate_ipv4(value: str) -> str:
@@ -131,7 +134,9 @@ def read_config_file(path: Path, encrypted: bool) -> dict[str, Any]:
         else:
             loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:
-        raise CflanError(f"Configuration file or SOPS executable was not found: {path}") from error
+        raise CflanError(
+            f"Configuration file or SOPS executable was not found: {path}"
+        ) from error
     except subprocess.CalledProcessError as error:
         raise CflanError("SOPS could not decrypt the configuration file.") from error
     except subprocess.TimeoutExpired as error:
@@ -163,9 +168,15 @@ def parse_config(values: dict[str, Any]) -> CflanConfig:
         raise CflanError("Configuration requires a non-empty cf_token.")
     if not isinstance(domain_name, str) or not domain_name.strip():
         raise CflanError("Configuration requires a non-empty cf_domain_name.")
-    if record_name is not None and (not isinstance(record_name, str) or not record_name.strip()):
+    if record_name is not None and (
+        not isinstance(record_name, str) or not record_name.strip()
+    ):
         raise CflanError("cf_record_name must be a non-empty string when provided.")
-    if isinstance(ttl, bool) or not isinstance(ttl, int) or (ttl != 1 and not 60 <= ttl <= 86400):
+    if (
+        isinstance(ttl, bool)
+        or not isinstance(ttl, int)
+        or (ttl != 1 and not 60 <= ttl <= 86400)
+    ):
         raise CflanError("cf_ttl must be 1 or an integer from 60 through 86400.")
     if not isinstance(proxied, bool):
         raise CflanError("cf_proxied must be a boolean.")
@@ -213,7 +224,9 @@ def get_dns_record(client: Any, zone_id: str, record_name: str) -> Any | None:
         )
     )
     if len(records) > 1:
-        raise CflanError("More than one matching A record exists; refusing to choose one.")
+        raise CflanError(
+            "More than one matching A record exists; refusing to choose one."
+        )
     return records[0] if records else None
 
 
@@ -294,8 +307,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except CflanError as error:
         print(f"cflan: {error}", file=sys.stderr)
         return 1
-    except Exception as error:  # Cloudflare SDK exceptions vary by transport and status.
-        print(f"cflan: Cloudflare update failed ({type(error).__name__}).", file=sys.stderr)
+    except (
+        Exception
+    ) as error:  # Cloudflare SDK exceptions vary by transport and status.
+        print(
+            f"cflan: Cloudflare update failed ({type(error).__name__}).",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

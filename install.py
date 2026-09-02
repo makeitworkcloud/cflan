@@ -25,7 +25,9 @@ def install() -> None:
 
     script_dir = Path(__file__).resolve().parent
     if not DISPATCHER_PATH.parent.is_dir():
-        sys.exit(f"Error: NetworkManager dispatcher directory is missing: {DISPATCHER_PATH.parent}")
+        sys.exit(
+            f"Error: NetworkManager dispatcher directory is missing: {DISPATCHER_PATH.parent}"
+        )
 
     print("Deploying NetworkManager dispatcher script...")
     shutil.copyfile(script_dir / "set_dns.py", DISPATCHER_PATH)
@@ -45,13 +47,17 @@ def install() -> None:
         os.chmod(target_path, 0o600)
         print(f"  Installed: {target_path}")
         if source_name.startswith("cflan_"):
-            print("  Using the preferred cflan-prefixed root-volume configuration name.")
+            print(
+                "  Using the preferred cflan-prefixed root-volume configuration name."
+            )
         if source_name in {"cflan_sops_vars.yaml", "sops_vars.yaml"}:
             print("  Note: Ensure SOPS is configured for the root user.")
         break
     else:
         print("  Warning: No configuration file found.")
-        print("  Expected cflan_vars.yaml or cflan_sops_vars.yaml; legacy aliases remain valid.")
+        print(
+            "  Expected cflan_vars.yaml or cflan_sops_vars.yaml; legacy aliases remain valid."
+        )
 
     print("\nInstallation complete!")
     print("Configuration remains root-owned on the root/volume area.")
