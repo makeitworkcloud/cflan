@@ -1,229 +1,227 @@
-import socket
-import sys
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-# Mock netifaces before import
-sys.modules["netifaces"] = MagicMock()
-sys.modules["CloudFlare"] = MagicMock()
-sys.modules["yaml"] = MagicMock()
-
-from set_dns import (  # noqa: E402
-    create_dns_record,
-    get_dns_record_id,
-    get_local_ip,
-    get_yaml_vars,
-    get_zone_info,
-    update_dns_record,
-    validate_network_manager_args,
-)
+import set_dns
 
 
-class TestGetLocalIp:
+@pytest.fixture
+def config_values():
+    return {
+        "cf_token": "test-token",
+        "cf_domain_name": "example.com",
+    }
+
+
+class TestAddresses:
     @patch("set_dns.socket.gethostbyname")
-    @patch("set_dns.socket.gethostname")
-    def test_get_local_ip_with_local_suffix(self, mock_hostname, mock_gethost):
-        mock_hostname.return_value = "testhost"
+    @patch("set_dns.socket.gethostname", return_value="testhost")
+    def test_get_local_ip_prefers_local_name(self, _, mock_gethost):
         mock_gethost.return_value = "192.168.1.100"
-        result = get_local_ip()
-        assert result == "192.168.1.100"
-        mock_gethost.assert_any_call("testhost.local")
+
+        assert set_dns.get_local_ip() == "192.168.1.100"
+        mock_gethost.assert_called_once_with("testhost.local")
 
     @patch("set_dns.socket.gethostbyname")
-    @patch("set_dns.socket.gethostname")
-    def test_get_local_ip_fallback_to_lan(self, mock_hostname, mock_gethost):
-        mock_hostname.return_value = "testhost"
+    @patch("set_dns.socket.gethostname", return_value="testhost")
+    def test_get_local_ip_falls_back_to_lan_name(self, _, mock_gethost):
+        mock_gethost.side_effect = [OSError("missing"), "192.168.1.100"]
 
-        def side_effect(hostname):
-            if hostname.endswith(".local"):
-                raise socket.gaierror("Not found")
-            return "192.168.1.100"
+        assert set_dns.get_local_ip() == "192.168.1.100"
+        assert mock_gethost.call_args_list[1].args == ("testhost.lan",)
 
-        mock_gethost.side_effect = side_effect
-        result = get_local_ip()
-        assert result == "192.168.1.100"
-
-    @patch("set_dns.socket.gethostbyname")
-    @patch("set_dns.socket.gethostname")
-    def test_get_local_ip_both_suffixes_fail(self, mock_hostname, mock_gethost):
-        mock_hostname.return_value = "testhost"
-
-        def side_effect(hostname):
-            raise socket.gaierror("Not found")
-
-        mock_gethost.side_effect = side_effect
-
-        with pytest.raises(socket.gaierror):
-            get_local_ip()
+    @pytest.mark.parametrize(
+        "value", ["127.0.0.1", "0.0.0.0", "224.0.0.1", "not-an-ip"]
+    )
+    def test_validate_ipv4_rejects_unsuitable_addresses(self, value):
+        with pytest.raises(set_dns.CflanError):
+            set_dns.validate_ipv4(value)
 
 
-class TestValidateNetworkManagerArgs:
-    @patch("set_dns.netifaces")
-    @patch("set_dns.sys")
-    def test_valid_interface_and_action(self, mock_sys, mock_netifaces):
-        mock_sys.argv = ["script", "eth0", "up"]
-        mock_netifaces.ifaddresses.return_value = {2: [{"addr": "192.168.1.100"}]}
+class TestNetworkManagerArguments:
+    def test_valid_interface_and_action(self, monkeypatch):
+        mock_netifaces = MagicMock()
         mock_netifaces.AF_INET = 2
+        mock_netifaces.ifaddresses.return_value = {2: [{"addr": "192.168.1.100"}]}
+        monkeypatch.setattr(set_dns, "netifaces", mock_netifaces)
 
-        validate_network_manager_args("192.168.1.100")
+        assert set_dns.validate_network_manager_args(
+            "192.168.1.100", ["set_dns", "eth0", "up"]
+        )
 
-    @patch("set_dns.netifaces")
-    @patch("set_dns.sys")
-    def test_mismatched_ip_address(self, mock_sys, mock_netifaces):
-        mock_sys.argv = ["script", "eth0", "up"]
-        mock_sys.exit.side_effect = SystemExit
+    def test_non_up_action_is_skipped(self):
+        assert not set_dns.validate_network_manager_args(
+            "192.168.1.100", ["set_dns", "eth0", "down"]
+        )
+
+    def test_mismatched_interface_address_is_rejected(self, monkeypatch):
+        mock_netifaces = MagicMock()
+        mock_netifaces.AF_INET = 2
         mock_netifaces.ifaddresses.return_value = {2: [{"addr": "10.0.0.1"}]}
-        mock_netifaces.AF_INET = 2
+        monkeypatch.setattr(set_dns, "netifaces", mock_netifaces)
 
-        with pytest.raises(SystemExit):
-            validate_network_manager_args("192.168.1.100")
-
-    @patch("set_dns.netifaces")
-    @patch("set_dns.sys")
-    def test_wrong_action(self, mock_sys, mock_netifaces):
-        mock_sys.argv = ["script", "eth0", "down"]
-        mock_sys.exit.side_effect = SystemExit
-        mock_netifaces.ifaddresses.return_value = {2: [{"addr": "192.168.1.100"}]}
-        mock_netifaces.AF_INET = 2
-
-        with pytest.raises(SystemExit):
-            validate_network_manager_args("192.168.1.100")
-
-    @patch("set_dns.netifaces")
-    @patch("set_dns.sys")
-    def test_no_arguments(self, mock_sys, mock_netifaces):
-        mock_sys.argv = ["script"]
-        mock_netifaces.AF_INET = 2
-
-        validate_network_manager_args("192.168.1.100")
+        with pytest.raises(set_dns.CflanError):
+            set_dns.validate_network_manager_args(
+                "192.168.1.100", ["set_dns", "eth0", "up"]
+            )
 
 
-class TestGetYamlVars:
+class TestConfiguration:
+    def test_prefers_cflan_prefixed_root_volume_filename(self, tmp_path):
+        preferred = tmp_path / "cflan_vars.yaml"
+        legacy = tmp_path / "vars.yaml"
+        preferred.write_text("cf_token: test-token\ncf_domain_name: example.com\n")
+        legacy.write_text("cf_token: test-token\ncf_domain_name: example.com\n")
+
+        path, encrypted = set_dns.resolve_config_path(
+            config_paths=((preferred, False), (legacy, False))
+        )
+
+        assert path == preferred
+        assert not encrypted
+
+    def test_legacy_root_volume_filename_remains_an_alias(self, tmp_path):
+        legacy = tmp_path / "vars.yaml"
+        legacy.write_text("cf_token: test-token\ncf_domain_name: example.com\n")
+
+        path, encrypted = set_dns.resolve_config_path(config_paths=((legacy, False),))
+
+        assert path == legacy
+        assert not encrypted
+
     @patch(
         "builtins.open",
-        mock_open(read_data="cf_token: test123\ncf_domain: example.com"),
+        mock_open(read_data="cf_token: test-token\ncf_domain_name: example.com"),
     )
-    @patch("set_dns.yaml")
-    def test_get_unencrypted_yaml(self, mock_yaml):
-        mock_yaml.safe_load.return_value = {
-            "cf_token": "test123",
-            "cf_domain": "example.com",
-        }
+    @patch(
+        "set_dns.Path.read_text",
+        return_value="cf_token: test-token\ncf_domain_name: example.com",
+    )
+    def test_reads_plaintext_yaml(self, mock_read):
+        values = set_dns.read_config_file(Path("/cflan_vars.yaml"), encrypted=False)
 
-        result = get_yaml_vars()
-
-        assert result["cf_token"] == "test123"
-        assert result["cf_domain"] == "example.com"
+        assert values["cf_token"] == "test-token"
+        mock_read.assert_called_once_with(encoding="utf-8")
 
     @patch("set_dns.subprocess.run")
-    @patch("set_dns.yaml")
-    @patch("builtins.open")
-    def test_get_sops_encrypted_yaml(self, mock_open_file, mock_yaml, mock_run):
-        mock_open_file.side_effect = FileNotFoundError()
-
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=b"cf_token: encrypted123\ncf_domain: example.com",
-            stderr=b"",
+    def test_reads_sops_yaml_without_writing_plaintext(self, mock_run):
+        mock_run.return_value.stdout = (
+            "cf_token: test-token\ncf_domain_name: example.com"
         )
-        mock_yaml.safe_load.return_value = {
-            "cf_token": "encrypted123",
-            "cf_domain": "example.com",
-        }
 
-        result = get_yaml_vars()
+        values = set_dns.read_config_file(Path("/cflan_sops_vars.yaml"), encrypted=True)
 
-        assert result["cf_token"] == "encrypted123"
+        assert values["cf_domain_name"] == "example.com"
         mock_run.assert_called_once()
 
-    @patch("set_dns.subprocess.run")
-    @patch("builtins.open")
-    def test_sops_not_installed(self, mock_open_file, mock_run):
-        mock_open_file.side_effect = FileNotFoundError()
-        mock_run.side_effect = FileNotFoundError("sops not found")
+    def test_config_requires_token_and_domain(self):
+        with pytest.raises(set_dns.CflanError):
+            set_dns.parse_config({"cf_token": "test-token"})
 
-        with pytest.raises(SystemExit):
-            get_yaml_vars()
+    def test_config_rejects_invalid_ttl(self, config_values):
+        config_values["cf_ttl"] = 30
 
+        with pytest.raises(set_dns.CflanError):
+            set_dns.parse_config(config_values)
 
-class TestGetZoneInfo:
-    def test_get_zone_info(self):
-        mock_cf = MagicMock()
-        mock_cf.zones.get.return_value = [{"id": "zone123", "name": "example.com"}]
+    @patch("set_dns.socket.gethostname", return_value="host")
+    def test_record_name_defaults_to_hostname(self, _, config_values):
+        config = set_dns.parse_config(config_values)
 
-        zone_id, zone_name = get_zone_info(mock_cf, "example.com")
-
-        assert zone_id == "zone123"
-        assert zone_name == "example.com"
+        assert set_dns.get_record_name(config) == "host.example.com"
 
 
-class TestGetDnsRecordId:
-    def test_existing_record_found(self):
-        mock_cf = MagicMock()
-        mock_cf.zones.dns_records.get.return_value = [{"id": "record123"}]
+class TestCloudflareReconciliation:
+    def test_get_zone_info_requires_exact_match(self):
+        client = MagicMock()
+        client.zones.list.return_value = [
+            SimpleNamespace(id="zone-id", name="example.com")
+        ]
 
-        result = get_dns_record_id(mock_cf, "zone123", "host", "example.com")
-
-        assert result == "record123"
-
-    def test_no_existing_record(self):
-        mock_cf = MagicMock()
-        mock_cf.zones.dns_records.get.return_value = []
-
-        result = get_dns_record_id(mock_cf, "zone123", "host", "example.com")
-
-        assert result == ""
-
-
-class TestCreateDnsRecord:
-    def test_create_record_success(self):
-        mock_cf = MagicMock()
-
-        create_dns_record(mock_cf, "zone123", "host", "192.168.1.100")
-
-        mock_cf.zones.dns_records.post.assert_called_once_with(
-            "zone123",
-            data={"name": "host", "type": "A", "content": "192.168.1.100"},
+        assert set_dns.get_zone_info(client, "example.com") == (
+            "zone-id",
+            "example.com",
         )
 
-    def test_create_record_api_error(self):
-        mock_cf = MagicMock()
+    def test_get_dns_record_rejects_duplicates(self):
+        client = MagicMock()
+        client.dns.records.list.return_value = [MagicMock(), MagicMock()]
 
-        class MockAPIError(Exception):
-            def __str__(self):
-                return "API Error"
+        with pytest.raises(set_dns.CflanError):
+            set_dns.get_dns_record(client, "zone-id", "host.example.com")
 
-            def __int__(self):
-                return 400
+    def test_create_record_uses_explicit_defaults(self, config_values):
+        client = MagicMock()
+        config = set_dns.parse_config(config_values)
 
-        mock_cf.zones.dns_records.post.side_effect = MockAPIError("API Error")
-        # Also set the exception on the module mock so isinstance check passes
-        import sys
-
-        sys.modules["CloudFlare"].exceptions.CloudFlareAPIError = MockAPIError
-
-        with pytest.raises(SystemExit):
-            create_dns_record(mock_cf, "zone123", "host", "192.168.1.100")
-
-
-class TestUpdateDnsRecord:
-    def test_update_when_ip_changed(self):
-        mock_cf = MagicMock()
-        mock_cf.zones.dns_records.get.return_value = [{"content": "10.0.0.1"}]
-
-        update_dns_record(
-            mock_cf, "zone123", "record123", "host.example.com", "192.168.1.100"
+        set_dns.create_dns_record(
+            client, "zone-id", "host.example.com", "192.168.1.100", config
         )
 
-        mock_cf.zones.dns_records.delete.assert_called_once_with("zone123", "record123")
-        mock_cf.zones.dns_records.post.assert_called_once()
+        client.dns.records.create.assert_called_once_with(
+            zone_id="zone-id",
+            name="host.example.com",
+            type="A",
+            content="192.168.1.100",
+            ttl=1,
+            proxied=False,
+        )
 
-    def test_no_update_when_ip_unchanged(self):
-        mock_cf = MagicMock()
-        mock_cf.zones.dns_records.get.return_value = [{"content": "192.168.1.100"}]
+    def test_update_record_uses_patch_without_delete(self):
+        client = MagicMock()
+        record = SimpleNamespace(
+            id="record-id",
+            content="10.0.0.1",
+            ttl=300,
+            proxied=True,
+        )
 
-        with pytest.raises(SystemExit):
-            update_dns_record(
-                mock_cf, "zone123", "record123", "host.example.com", "192.168.1.100"
-            )
+        set_dns.update_dns_record(
+            client,
+            "zone-id",
+            record,
+            "host.example.com",
+            "192.168.1.100",
+        )
+
+        client.dns.records.edit.assert_called_once_with(
+            "record-id",
+            zone_id="zone-id",
+            name="host.example.com",
+            type="A",
+            content="192.168.1.100",
+            ttl=300,
+            proxied=True,
+        )
+        client.dns.records.delete.assert_not_called()
+
+    def test_matching_record_is_not_mutated(self):
+        client = MagicMock()
+        record = SimpleNamespace(
+            id="record-id",
+            content="192.168.1.100",
+            ttl=1,
+            proxied=False,
+        )
+
+        set_dns.update_dns_record(
+            client,
+            "zone-id",
+            record,
+            "host.example.com",
+            "192.168.1.100",
+        )
+
+        client.dns.records.edit.assert_not_called()
+
+
+class TestEntrypoint:
+    @patch("set_dns.set_dns", side_effect=set_dns.CflanError("bad configuration"))
+    def test_main_returns_nonzero_for_expected_failure(self, _):
+        assert set_dns.main(["set_dns"]) == 1
+
+    @patch("set_dns.set_dns", side_effect=RuntimeError("unexpected"))
+    def test_main_does_not_render_unexpected_error_text(self, _):
+        assert set_dns.main(["set_dns"]) == 1
