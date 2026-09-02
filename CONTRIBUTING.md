@@ -17,6 +17,8 @@ Preserve these compatibility contracts unless a change explicitly documents a mi
 3. Run `pre-commit run --all-files`, `python -m pytest --cov`, `mypy set_dns.py`, and `python -m build`.
 4. Open a pull request explaining configuration, DNS, and rollback impact.
 
+`python3 set_dns.py --dry-run [--config PATH]` is available as a non-mutating preflight for local configuration checks. It does not validate Cloudflare credentials, SOPS key availability for root, or actual dispatcher execution, and it is not a substitute for CI.
+
 CI is the validation authority. A passing unit-test suite does not prove that a changed dispatcher hook, SOPS configuration, or Cloudflare token works in an installed host.
 
 ## Pull requests

@@ -53,6 +53,12 @@ The installer copies `set_dns.py` to `/etc/NetworkManager/dispatcher.d/set_dns` 
 
 > A Cloudflare DNS record containing an RFC1918 address is useful only for clients that can route to that LAN. CFLAN does not make a private address reachable from the public Internet.
 
+## Preflight dry run
+
+`set_dns.py --dry-run [--config PATH]` is a non-mutating preflight check. It validates root-volume configuration selection and parsing, the resolved local IPv4 address, the dispatcher positional arguments (`interface`/`action`) when present, and the derived FQDN, then prints the intended reconciliation and exits successfully without constructing a Cloudflare client or performing any Cloudflare API call.
+
+A dry run never contacts Cloudflare, so it does not prove the API token is valid. It also does not verify SOPS key availability for the root user, and it does not install or execute the NetworkManager dispatcher hook. Normal behavior is unchanged when `--dry-run` is omitted.
+
 ## Behavior and safety
 
 - Only NetworkManager `up` events update DNS; other dispatcher events are skipped.

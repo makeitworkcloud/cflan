@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 DISPATCHER_PATH = Path("/etc/NetworkManager/dispatcher.d/set_dns")
@@ -18,26 +19,30 @@ CONFIG_FILES: tuple[tuple[str, str], ...] = (
 )
 
 
-def install() -> None:
+def install(
+    source_dir: Path | None = None,
+    dispatcher_path: Path = DISPATCHER_PATH,
+    config_files: Sequence[tuple[str, str]] = CONFIG_FILES,
+) -> None:
     """Install only files supplied by the operator; never create configuration values."""
     if os.getuid() != 0:
         sys.exit("Error: Must run as root")
 
-    script_dir = Path(__file__).resolve().parent
-    if not DISPATCHER_PATH.parent.is_dir():
+    source_root = Path(__file__).resolve().parent if source_dir is None else source_dir
+    if not dispatcher_path.parent.is_dir():
         sys.exit(
-            f"Error: NetworkManager dispatcher directory is missing: {DISPATCHER_PATH.parent}"
+            f"Error: NetworkManager dispatcher directory is missing: {dispatcher_path.parent}"
         )
 
     print("Deploying NetworkManager dispatcher script...")
-    shutil.copyfile(script_dir / "set_dns.py", DISPATCHER_PATH)
-    os.chown(DISPATCHER_PATH, 0, 0)
-    os.chmod(DISPATCHER_PATH, 0o700)
-    print(f"  Installed: {DISPATCHER_PATH}")
+    shutil.copyfile(source_root / "set_dns.py", dispatcher_path)
+    os.chown(dispatcher_path, 0, 0)
+    os.chmod(dispatcher_path, 0o700)
+    print(f"  Installed: {dispatcher_path}")
 
     print("\nDeploying configuration...")
-    for source_name, target_name in CONFIG_FILES:
-        source_path = script_dir / source_name
+    for source_name, target_name in config_files:
+        source_path = source_root / source_name
         if not source_path.is_file():
             continue
 
