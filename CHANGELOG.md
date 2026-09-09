@@ -13,6 +13,10 @@ exactly that versioned section and publishes it as the GitHub Release body.
 
 ## Unreleased
 
+### Added
+
+- A read-only scheduled dry run that reports stale pull request candidates without changing NetworkManager or Cloudflare DNS configuration.
+
 ## [1.1.0] - 2026-09-02
 
 ### Added
