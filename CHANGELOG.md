@@ -13,13 +13,13 @@ exactly that versioned section and publishes it as the GitHub Release body.
 
 ## Unreleased
 
-- Clarify that pull-request checks validate changes without running dispatcher hooks or updating live DNS.
 ### Added
 
 - A read-only scheduled dry run that reports stale pull request candidates without changing NetworkManager or Cloudflare DNS configuration.
 
 ### Changed
 
+- Clarify that pull-request checks validate changes without running dispatcher hooks or updating live DNS.
 - Updated the Codecov coverage-upload action from 7.0.0 to 7.1.0; installed CFLAN and DNS-update behavior are unchanged.
 
 ## [1.1.0] - 2026-09-02
