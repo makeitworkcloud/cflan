@@ -19,6 +19,7 @@ exactly that versioned section and publishes it as the GitHub Release body.
 
 ### Changed
 
+- Clarified that PR CI is authoritative and that agent sessions must not run local network hooks or update live DNS.
 - Updated the Codecov coverage-upload action from 7.0.0 to 7.1.0; installed CFLAN and DNS-update behavior are unchanged.
 
 ## [1.1.0] - 2026-09-02
