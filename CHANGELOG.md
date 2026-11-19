@@ -13,6 +13,7 @@ exactly that versioned section and publishes it as the GitHub Release body.
 
 ## Unreleased
 
+- Clarify that pull-request checks validate changes without running dispatcher hooks or updating live DNS.
 ### Added
 
 - A read-only scheduled dry run that reports stale pull request candidates without changing NetworkManager or Cloudflare DNS configuration.
