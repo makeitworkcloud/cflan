@@ -2,7 +2,7 @@
 
 Python utility for NetworkManager-dispatcher-driven Cloudflare DNS updates.
 
-Preserve dispatcher integration, idempotent DNS behavior, and test coverage. Use PR CI as validation evidence; do not run dispatcher hooks against a live network or make live DNS updates as part of validation.
+Preserve dispatcher integration, idempotent DNS behavior, and test coverage. Use PR CI as the validation authority. Do not install packages on an agent host, run local network dispatcher hooks, or make live DNS updates from an agent session.
 
 Never expose Cloudflare tokens, API responses containing credentials, host-specific private data, or production DNS values not already intended for public repository content.
 
